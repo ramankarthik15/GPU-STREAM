@@ -34,10 +34,17 @@
 #include "OMP3Stream.h"
 #endif
 
+#define OMP40
+#include "OMP40Stream.h"
+
 unsigned int ARRAY_SIZE = 52428800;
 unsigned int num_times = 10;
 unsigned int deviceIndex = 0;
 bool use_float = false;
+
+double *omp_a;
+double *omp_b;
+double *omp_c;
 
 
 template <typename T>
@@ -58,7 +65,7 @@ int main(int argc, char *argv[])
   parseArguments(argc, argv);
 
   // TODO: Fix SYCL to allow multiple template specializations
-#ifndef SYCL
+#if !defined(SYCL) && !defined(OMP40)
   if (use_float)
     run<float>();
   else
@@ -114,6 +121,8 @@ void run()
 
 #endif
 
+  stream = new OMP40Stream<double>(ARRAY_SIZE);
+
   stream->write_arrays(a, b, c);
 
   // List of times
@@ -121,6 +130,9 @@ void run()
 
   // Declare timers
   std::chrono::high_resolution_clock::time_point t1, t2;
+
+#pragma omp target data map(tofrom: omp_a[0:ARRAY_SIZE], omp_b[0:ARRAY_SIZE], omp_c[0:ARRAY_SIZE]) map(to: ARRAY_SIZE)
+{
 
   // Main loop
   for (unsigned int k = 0; k < num_times; k++)
@@ -153,6 +165,13 @@ void run()
 
   // Check solutions
   stream->read_arrays(a, b, c);
+
+}
+
+  std::copy(omp_a, omp_a + ARRAY_SIZE, a.data());
+  std::copy(omp_b, omp_b + ARRAY_SIZE, b.data());
+  std::copy(omp_c, omp_c + ARRAY_SIZE, c.data());
+
   check_solution<T>(num_times, a, b, c);
 
   // Display timing results
