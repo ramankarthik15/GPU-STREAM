@@ -54,7 +54,7 @@ void OMP45Stream<T>::copy()
   unsigned int array_size = this->array_size;
   T *a = this->a;
   T *c = this->c;
-  #pragma omp target teams distribute parallel for simd map(to: a[0:array_size], c[0:array_size])
+#pragma omp target teams distribute parallel for map(to: a[0:array_size], c[0:array_size]) schedule(static,1)
   for (int i = 0; i < array_size; i++)
   {
     c[i] = a[i];
@@ -64,12 +64,13 @@ void OMP45Stream<T>::copy()
 template <class T>
 void OMP45Stream<T>::mul()
 {
+  // TODO: Swapping these two lines over gives the incorrect results with clang-omp branch!
+  unsigned int array_size = this->array_size;
   const T scalar = 0.3;
 
-  unsigned int array_size = this->array_size;
   T *b = this->b;
   T *c = this->c;
-  #pragma omp target teams distribute parallel for simd map(to: b[0:array_size], c[0:array_size])
+#pragma omp target teams distribute parallel for map(to: b[0:array_size], c[0:array_size]) schedule(static,1)
   for (int i = 0; i < array_size; i++)
   {
     b[i] = scalar * c[i];
@@ -83,7 +84,7 @@ void OMP45Stream<T>::add()
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma omp target teams distribute parallel for simd map(to: a[0:array_size], b[0:array_size], c[0:array_size])
+#pragma omp target teams distribute parallel for map(to: a[0:array_size], b[0:array_size], c[0:array_size]) schedule(static,1)
   for (int i = 0; i < array_size; i++)
   {
     c[i] = a[i] + b[i];
@@ -93,13 +94,13 @@ void OMP45Stream<T>::add()
 template <class T>
 void OMP45Stream<T>::triad()
 {
+  unsigned int array_size = this->array_size;
   const T scalar = 0.3;
 
-  unsigned int array_size = this->array_size;
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma omp target teams distribute parallel for simd map(to: a[0:array_size], b[0:array_size], c[0:array_size])
+#pragma omp target teams distribute parallel for map(to: a[0:array_size], b[0:array_size], c[0:array_size]) schedule(static,1)
   for (int i = 0; i < array_size; i++)
   {
     a[i] = b[i] + scalar * c[i];

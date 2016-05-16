@@ -11,7 +11,7 @@
 #include <cmath>
 #include <limits>
 #include <chrono>
-#include <algorithm>
+//#include <algorithm>
 #include <iomanip>
 #include <cstring>
 
@@ -192,7 +192,14 @@ void run()
   for (int i = 0; i < 4; i++)
   {
     // Get min/max; ignore the first result
-    auto minmax = std::minmax_element(timings[i].begin()+1, timings[i].end());
+    //auto minmax = std::minmax_element(timings[i].begin()+1, timings[i].end());
+
+    double min = 10000, max = 0;
+    for (int j = 0; j < num_times; j++)
+    {
+      min = timings[i][j] < min ? timings[i][j] : min;
+      max = timings[i][j] > max ? timings[i][j] : max;
+    }
 
     // Calculate average; ignore the first result
     double average = std::accumulate(timings[i].begin()+1, timings[i].end(), 0.0) / (double)(num_times - 1);
@@ -200,9 +207,9 @@ void run()
     // Display results
     std::cout
       << std::left << std::setw(12) << labels[i]
-      << std::left << std::setw(12) << std::setprecision(3) << 1.0E-6 * sizes[i] / (*minmax.first)
-      << std::left << std::setw(12) << std::setprecision(5) << *minmax.first
-      << std::left << std::setw(12) << std::setprecision(5) << *minmax.second
+      << std::left << std::setw(12) << std::setprecision(3) << 1.0E-6 * sizes[i] / (min)
+      << std::left << std::setw(12) << std::setprecision(5) << min
+      << std::left << std::setw(12) << std::setprecision(5) << max
       << std::left << std::setw(12) << std::setprecision(5) << average
       << std::endl;
 
