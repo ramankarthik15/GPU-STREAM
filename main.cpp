@@ -32,13 +32,16 @@
 #include "SYCLStream.h"
 #elif defined(OMP3)
 #include "OMP3Stream.h"
+#elif defined(OMP45)
+#include "OMP45Stream.h"
 #endif
 
 #define OMP40
 #include "OMP40Stream.h"
 
-unsigned int ARRAY_SIZE = 52428800;
-unsigned int num_times = 10;
+// Default size of 2^25
+unsigned int ARRAY_SIZE = 33554432;
+unsigned int num_times = 100;
 unsigned int deviceIndex = 0;
 bool use_float = false;
 
@@ -77,9 +80,16 @@ int main(int argc, char *argv[])
 template <typename T>
 void run()
 {
+  std::cout << "Running kernels " << num_times << " times" << std::endl;
+
+  if (sizeof(T) == sizeof(float))
+    std::cout << "Precision: float" << std::endl;
+  else
+    std::cout << "Precision: double" << std::endl;
+
   // Create host vectors
-  std::vector<T> a(ARRAY_SIZE, 1.0);
-  std::vector<T> b(ARRAY_SIZE, 2.0);
+  std::vector<T> a(ARRAY_SIZE, 0.1);
+  std::vector<T> b(ARRAY_SIZE, 0.2);
   std::vector<T> c(ARRAY_SIZE, 0.0);
   std::streamsize ss = std::cout.precision();
   std::cout << std::setprecision(1) << std::fixed
@@ -118,6 +128,10 @@ void run()
 #elif defined(OMP3)
   // Use the "reference" OpenMP 3 implementation
   stream = new OMP3Stream<T>(ARRAY_SIZE, a.data(), b.data(), c.data());
+
+#elif defined(OMP45)
+  // Use the "reference" OpenMP 3 implementation
+  stream = new OMP45Stream<T>(ARRAY_SIZE, a.data(), b.data(), c.data(), deviceIndex);
 
 #endif
 
@@ -219,11 +233,11 @@ template <typename T>
 void check_solution(const unsigned int ntimes, std::vector<T>& a, std::vector<T>& b, std::vector<T>& c)
 {
   // Generate correct solution
-  T goldA = 1.0;
-  T goldB = 2.0;
+  T goldA = 0.1;
+  T goldB = 0.2;
   T goldC = 0.0;
 
-  const T scalar = 3.0;
+  const T scalar = 0.3;
 
   for (unsigned int i = 0; i < ntimes; i++)
   {
@@ -300,11 +314,15 @@ void parseArguments(int argc, char *argv[])
         std::cerr << "Invalid number of times." << std::endl;
         exit(EXIT_FAILURE);
       }
+      if (num_times < 2)
+      {
+        std::cerr << "Number of times must be 2 or more" << std::endl;
+        exit(EXIT_FAILURE);
+      }
     }
     else if (!std::string("--float").compare(argv[i]))
     {
       use_float = true;
-      std::cout << "Warning: If number of iterations set >= 8, expect rounding errors with single precision" << std::endl;
     }
     else if (!std::string("--help").compare(argv[i]) ||
              !std::string("-h").compare(argv[i]))

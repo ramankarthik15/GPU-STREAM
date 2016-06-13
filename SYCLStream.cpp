@@ -11,10 +11,38 @@
 
 using namespace cl::sycl;
 
+#define WGSIZE 64
+
+// Cache list of devices
+bool cached = false;
+std::vector<device> devices;
+void getDeviceList(void);
+
 template <class T>
 SYCLStream<T>::SYCLStream(const unsigned int ARRAY_SIZE, const int device_index)
 {
+  if (!cached)
+    getDeviceList();
+
+  // The array size must be divisible by WGSIZE
+  if (ARRAY_SIZE % WGSIZE != 0)
+  {
+    std::stringstream ss;
+    ss << "Array size must be a multiple of " << WGSIZE;
+    throw std::runtime_error(ss.str());
+  }
+
   array_size = ARRAY_SIZE;
+
+  if (device_index >= devices.size())
+    throw std::runtime_error("Invalid device index");
+  device dev = devices[device_index];
+
+  // Print out device information
+  std::cout << "Using SYCL device " << getDeviceName(device_index) << std::endl;
+  std::cout << "Driver: " << getDeviceDriver(device_index) << std::endl;
+
+  queue = new cl::sycl::queue(dev);
 
   // Create buffers
   d_a = new buffer<T>(array_size);
@@ -28,69 +56,72 @@ SYCLStream<T>::~SYCLStream()
   delete d_a;
   delete d_b;
   delete d_c;
+
+  delete queue;
 }
 
 template <class T>
 void SYCLStream<T>::copy()
 {
-  queue.submit([&](handler &cgh)
+  queue->submit([&](handler &cgh)
   {
     auto ka = d_a->template get_access<access::mode::read>(cgh);
     auto kc = d_c->template get_access<access::mode::write>(cgh);
-    cgh.parallel_for<class copy>(range<1>{array_size}, [=](id<1> index)
+    cgh.parallel_for<class copy>(nd_range<1>{array_size, WGSIZE}, [=](nd_item<1> item)
     {
-      kc[index] = ka[index];
+      kc[item.get_global()] = ka[item.get_global()];
     });
   });
-  queue.wait();
+  queue->wait();
 }
 
 template <class T>
 void SYCLStream<T>::mul()
 {
-  const T scalar = 3.0;
-  queue.submit([&](handler &cgh)
+  const T scalar = 0.3;
+  queue->submit([&](handler &cgh)
   {
     auto kb = d_b->template get_access<access::mode::write>(cgh);
     auto kc = d_c->template get_access<access::mode::read>(cgh);
-    cgh.parallel_for<class mul>(range<1>{array_size}, [=](id<1> index)
+    cgh.parallel_for<class mul>(nd_range<1>{array_size, WGSIZE}, [=](nd_item<1> item)
     {
-      kb[index] = scalar * kc[index];
+      kb[item.get_global()] = scalar * kc[item.get_global()];
     });
   });
-  queue.wait();
+  queue->wait();
 }
 
 template <class T>
 void SYCLStream<T>::add()
 {
-  queue.submit([&](handler &cgh)
+  queue->submit([&](handler &cgh)
   {
     auto ka = d_a->template get_access<access::mode::read>(cgh);
     auto kb = d_b->template get_access<access::mode::read>(cgh);
     auto kc = d_c->template get_access<access::mode::write>(cgh);
-    cgh.parallel_for<class add>(range<1>{array_size}, [=](id<1> index)
+    cgh.parallel_for<class add>(nd_range<1>{array_size, WGSIZE}, [=](nd_item<1> item)
     {
-      kc[index] = ka[index] + kb[index];
+      kc[item.get_global()] = ka[item.get_global()] + kb[item.get_global()];
     });
   });
-  queue.wait();
+  queue->wait();
 }
 
 template <class T>
 void SYCLStream<T>::triad()
 {
-  const T scalar = 3.0;
-  queue.submit([&](handler &cgh)
+  const T scalar = 0.3;
+  queue->submit([&](handler &cgh)
   {
     auto ka = d_a->template get_access<access::mode::write>(cgh);
     auto kb = d_b->template get_access<access::mode::read>(cgh);
     auto kc = d_c->template get_access<access::mode::read>(cgh);
-    cgh.parallel_for<class triad>(range<1>{array_size}, [=](id<1> index){
-      ka[index] = kb[index] + scalar * kc[index];
+    cgh.parallel_for<class triad>(nd_range<1>{array_size, WGSIZE}, [=](nd_item<1> item)
+    {
+      ka[item.get_global()] = kb[item.get_global()] + scalar * kc[item.get_global()];
     });
   });
-  queue.wait();
+  queue->wait();
 }
 
 template <class T>
@@ -121,25 +152,77 @@ void SYCLStream<T>::read_arrays(std::vector<T>& a, std::vector<T>& b, std::vecto
   }
 }
 
+void getDeviceList(void)
+{
+  // Get list of platforms
+  std::vector<platform> platforms = platform::get_platforms();
+
+  // Enumerate devices
+  for (unsigned i = 0; i < platforms.size(); i++)
+  {
+    std::vector<device> plat_devices = platforms[i].get_devices();
+    devices.insert(devices.end(), plat_devices.begin(), plat_devices.end());
+  }
+  cached = true;
+}
+
 void listDevices(void)
 {
-  // TODO: Get actual list of devices
-  std::cout << std::endl;
-  std::cout << "Devices:" << std::endl;
-  std::cout << "0: " << "triSYCL" << std::endl;
-  std::cout << std::endl;
+  getDeviceList();
+
+  // Print device names
+  if (devices.size() == 0)
+  {
+    std::cerr << "No devices found." << std::endl;
+  }
+  else
+  {
+    std::cout << std::endl;
+    std::cout << "Devices:" << std::endl;
+    for (int i = 0; i < devices.size(); i++)
+    {
+      std::cout << i << ": " << getDeviceName(i) << std::endl;
+    }
+    std::cout << std::endl;
+  }
 }
 
 std::string getDeviceName(const int device)
 {
-  // TODO: Implement properly
-  return "triSYCL";
+  if (!cached)
+    getDeviceList();
+
+  std::string name;
+
+  if (device < devices.size())
+  {
+    name = devices[device].get_info<info::device::name>();
+  }
+  else
+  {
+    throw std::runtime_error("Error asking for name for non-existant device");
+  }
+
+  return name;
 }
 
 std::string getDeviceDriver(const int device)
 {
-  // TODO: Implement properly
-  return "triSCYL";
+  if (!cached)
+    getDeviceList();
+
+  std::string driver;
+
+  if (device < devices.size())
+  {
+    driver = devices[device].get_info<info::device::driver_version>();
+  }
+  else
+  {
+    throw std::runtime_error("Error asking for driver for non-existant device");
+  }
+
+  return driver;
 }
 
 

@@ -5,13 +5,12 @@
 // For full license terms please see the LICENSE file distributed with this
 // source code
 
-#include "ACCStream.h"
+#include "OMP45Stream.h"
 
 template <class T>
-ACCStream<T>::ACCStream(const unsigned int ARRAY_SIZE, T *a, T *b, T *c, int device)
+OMP45Stream<T>::OMP45Stream(const unsigned int ARRAY_SIZE, T *a, T *b, T *c, int device)
 {
-
-  acc_set_device_num(device, acc_device_nvidia);
+  omp_set_default_device(device);
 
   array_size = ARRAY_SIZE;
 
@@ -19,49 +18,49 @@ ACCStream<T>::ACCStream(const unsigned int ARRAY_SIZE, T *a, T *b, T *c, int dev
   this->a = a;
   this->b = b;
   this->c = c;
-  #pragma acc enter data create(a[0:array_size], b[0:array_size], c[0:array_size])
+  #pragma omp target enter data map(to: a[0:array_size], b[0:array_size], c[0:array_size])
   {}
 }
 
 template <class T>
-ACCStream<T>::~ACCStream()
+OMP45Stream<T>::~OMP45Stream()
 {
   // End data region on device
   unsigned int array_size = this->array_size;
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma acc exit data delete(a[0:array_size], b[0:array_size], c[0:array_size])
+  #pragma omp target exit data map(release: a[0:array_size], b[0:array_size], c[0:array_size])
   {}
 }
 
 template <class T>
-void ACCStream<T>::write_arrays(const std::vector<T>& h_a, const std::vector<T>& h_b, const std::vector<T>& h_c)
+void OMP45Stream<T>::write_arrays(const std::vector<T>& h_a, const std::vector<T>& h_b, const std::vector<T>& h_c)
 {
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma acc update device(a[0:array_size], b[0:array_size], c[0:array_size])
+  #pragma omp target update to(a[0:array_size], b[0:array_size], c[0:array_size])
   {}
 }
 
 template <class T>
-void ACCStream<T>::read_arrays(std::vector<T>& h_a, std::vector<T>& h_b, std::vector<T>& h_c)
+void OMP45Stream<T>::read_arrays(std::vector<T>& h_a, std::vector<T>& h_b, std::vector<T>& h_c)
 {
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma acc update host(a[0:array_size], b[0:array_size], c[0:array_size])
+  #pragma omp target update from(a[0:array_size], b[0:array_size], c[0:array_size])
   {}
 }
 
 template <class T>
-void ACCStream<T>::copy()
+void OMP45Stream<T>::copy()
 {
   unsigned int array_size = this->array_size;
   T *a = this->a;
   T *c = this->c;
-  #pragma acc kernels present(a[0:array_size], c[0:array_size]) wait
+  #pragma omp target teams distribute parallel for simd map(to: a[0:array_size], c[0:array_size])
   for (int i = 0; i < array_size; i++)
   {
     c[i] = a[i];
@@ -69,14 +68,14 @@ void ACCStream<T>::copy()
 }
 
 template <class T>
-void ACCStream<T>::mul()
+void OMP45Stream<T>::mul()
 {
   const T scalar = 0.3;
 
   unsigned int array_size = this->array_size;
   T *b = this->b;
   T *c = this->c;
-  #pragma acc kernels present(b[0:array_size], c[0:array_size]) wait
+  #pragma omp target teams distribute parallel for simd map(to: b[0:array_size], c[0:array_size])
   for (int i = 0; i < array_size; i++)
   {
     b[i] = scalar * c[i];
@@ -84,13 +83,13 @@ void ACCStream<T>::mul()
 }
 
 template <class T>
-void ACCStream<T>::add()
+void OMP45Stream<T>::add()
 {
   unsigned int array_size = this->array_size;
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma acc kernels present(a[0:array_size], b[0:array_size], c[0:array_size]) wait
+  #pragma omp target teams distribute parallel for simd map(to: a[0:array_size], b[0:array_size], c[0:array_size])
   for (int i = 0; i < array_size; i++)
   {
     c[i] = a[i] + b[i];
@@ -98,7 +97,7 @@ void ACCStream<T>::add()
 }
 
 template <class T>
-void ACCStream<T>::triad()
+void OMP45Stream<T>::triad()
 {
   const T scalar = 0.3;
 
@@ -106,7 +105,7 @@ void ACCStream<T>::triad()
   T *a = this->a;
   T *b = this->b;
   T *c = this->c;
-  #pragma acc kernels present(a[0:array_size], b[0:array_size], c[0:array_size]) wait
+  #pragma omp target teams distribute parallel for simd map(to: a[0:array_size], b[0:array_size], c[0:array_size])
   for (int i = 0; i < array_size; i++)
   {
     a[i] = b[i] + scalar * c[i];
@@ -115,7 +114,7 @@ void ACCStream<T>::triad()
 void listDevices(void)
 {
   // Get number of devices
-  int count = acc_get_num_devices(acc_device_nvidia);
+  int count = omp_get_num_devices();
 
   // Print device list
   if (count == 0)
@@ -137,5 +136,5 @@ std::string getDeviceDriver(const int)
 {
   return std::string("Device driver unavailable");
 }
-template class ACCStream<float>;
-template class ACCStream<double>;
+template class OMP45Stream<float>;
+template class OMP45Stream<double>;

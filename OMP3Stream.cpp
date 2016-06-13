@@ -1,4 +1,10 @@
 
+// Copyright (c) 2015-16 Tom Deakin, Simon McIntosh-Smith,
+// University of Bristol HPC
+//
+// For full license terms please see the LICENSE file distributed with this
+// source code
+
 #include "OMP3Stream.h"
 
 template <class T>
@@ -56,7 +62,7 @@ void OMP3Stream<T>::copy()
 template <class T>
 void OMP3Stream<T>::mul()
 {
-  const T scalar = 3.0;
+  const T scalar = 0.3;
   #pragma omp parallel for
   for (int i = 0; i < array_size; i++)
   {
@@ -77,7 +83,7 @@ void OMP3Stream<T>::add()
 template <class T>
 void OMP3Stream<T>::triad()
 {
-  const T scalar = 3.0;
+  const T scalar = 0.3;
   #pragma omp parallel for
   for (int i = 0; i < array_size; i++)
   {
@@ -103,4 +109,3 @@ std::string getDeviceDriver(const int)
 
 template class OMP3Stream<float>;
 template class OMP3Stream<double>;
-
