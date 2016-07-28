@@ -7,6 +7,8 @@
 
 #include "OCLStream.h"
 
+#include <cmath>
+
 // Cache list of devices
 bool cached = false;
 std::vector<cl::Device> devices;
@@ -17,37 +19,47 @@ std::string kernels{R"CLC(
   constant TYPE scalar = 0.3;
 
   kernel void copy(
-    global const TYPE * restrict a,
-    global TYPE * restrict c)
+    read_only  image2d_t a,
+    write_only image2d_t c)
   {
-    const size_t i = get_global_id(0);
-    c[i] = a[i];
+    const size_t x = get_global_id(0);
+    const size_t y = get_global_id(1);
+    const TYPE _a = read_imagef(a, (int2)(x,y)).x;
+    write_imagef(c, (int2)(x,y), _a);
   }
 
   kernel void mul(
-    global TYPE * restrict b,
-    global const TYPE * restrict c)
+    write_only image2d_t b,
+    read_only  image2d_t c)
   {
-    const size_t i = get_global_id(0);
-    b[i] = scalar * c[i];
+    const size_t x = get_global_id(0);
+    const size_t y = get_global_id(1);
+    const TYPE _c = read_imagef(c, (int2)(x,y)).x;
+    write_imagef(b, (int2)(x,y), scalar * _c);
   }
 
   kernel void add(
-    global const TYPE * restrict a,
-    global const TYPE * restrict b,
-    global TYPE * restrict c)
+    read_only  image2d_t a,
+    read_only  image2d_t b,
+    write_only image2d_t c)
   {
-    const size_t i = get_global_id(0);
-    c[i] = a[i] + b[i];
+    const size_t x = get_global_id(0);
+    const size_t y = get_global_id(1);
+    const TYPE _a = read_imagef(a, (int2)(x,y)).x;
+    const TYPE _b = read_imagef(b, (int2)(x,y)).x;
+    write_imagef(c, (int2)(x,y), _a + _b);
   }
 
   kernel void triad(
-    global TYPE * restrict a,
-    global const TYPE * restrict b,
-    global const TYPE * restrict c)
+    write_only image2d_t a,
+    read_only  image2d_t b,
+    read_only  image2d_t c)
   {
-    const size_t i = get_global_id(0);
-    a[i] = b[i] + scalar * c[i];
+    const size_t x = get_global_id(0);
+    const size_t y = get_global_id(1);
+    const TYPE _b = read_imagef(b, (int2)(x,y)).x;
+    const TYPE _c = read_imagef(c, (int2)(x,y)).x;
+    write_imagef(a, (int2)(x,y), _b + scalar*_c);
   }
 
 )CLC"};
@@ -73,23 +85,35 @@ OCLStream<T>::OCLStream(const unsigned int ARRAY_SIZE, const int device_index)
 
   // Create program
   cl::Program program(context, kernels);
-  if (sizeof(T) == sizeof(double))
+  try
   {
-    // Check device can do double
-    if (!device.getInfo<CL_DEVICE_DOUBLE_FP_CONFIG>())
-      throw std::runtime_error("Device does not support double precision, please use --float");
-    program.build("-DTYPE=double");
+    if (sizeof(T) == sizeof(double))
+    {
+      // Check device can do double
+      if (!device.getInfo<CL_DEVICE_DOUBLE_FP_CONFIG>())
+        throw std::runtime_error("Device does not support double precision, please use --float");
+      program.build("-DTYPE=double");
+    }
+    else if (sizeof(T) == sizeof(float))
+      program.build("-DTYPE=float");
+    }
+  catch (cl::BuildError& err)
+  {
+    std::cerr << err.getBuildLog()[0].second << std::endl;
   }
-  else if (sizeof(T) == sizeof(float))
-    program.build("-DTYPE=float");
 
   // Create kernels
-  copy_kernel = new cl::KernelFunctor<cl::Buffer, cl::Buffer>(program, "copy");
-  mul_kernel = new cl::KernelFunctor<cl::Buffer, cl::Buffer>(program, "mul");
-  add_kernel = new cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer>(program, "add");
-  triad_kernel = new cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer>(program, "triad");
+  copy_kernel = new cl::KernelFunctor<cl::Image2D, cl::Image2D>(program, "copy");
+  mul_kernel = new cl::KernelFunctor<cl::Image2D, cl::Image2D>(program, "mul");
+  add_kernel = new cl::KernelFunctor<cl::Image2D, cl::Image2D, cl::Image2D>(program, "add");
+  triad_kernel = new cl::KernelFunctor<cl::Image2D, cl::Image2D, cl::Image2D>(program, "triad");
 
   array_size = ARRAY_SIZE;
+  image_size = sqrt(ARRAY_SIZE);
+  if (image_size*image_size != array_size)
+  {
+    throw std::runtime_error("array_size must be square for 2D images");
+  }
 
   // Check buffers fit on the device
   cl_ulong totalmem = device.getInfo<CL_DEVICE_GLOBAL_MEM_SIZE>();
@@ -99,11 +123,11 @@ OCLStream<T>::OCLStream(const unsigned int ARRAY_SIZE, const int device_index)
   if (totalmem < 3*sizeof(T)*ARRAY_SIZE)
     throw std::runtime_error("Device does not have enough memory for all 3 buffers");
 
-  // Create buffers
-  d_a = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(T) * ARRAY_SIZE);
-  d_b = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(T) * ARRAY_SIZE);
-  d_c = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(T) * ARRAY_SIZE);
-
+  // Create images
+  cl::ImageFormat format = {CL_R, CL_FLOAT};
+  d_a = cl::Image2D(context, CL_MEM_READ_WRITE, format, image_size, image_size);
+  d_b = cl::Image2D(context, CL_MEM_READ_WRITE, format, image_size, image_size);
+  d_c = cl::Image2D(context, CL_MEM_READ_WRITE, format, image_size, image_size);
 }
 
 template <class T>
@@ -119,7 +143,7 @@ template <class T>
 void OCLStream<T>::copy()
 {
   (*copy_kernel)(
-    cl::EnqueueArgs(queue, cl::NDRange(array_size)),
+    cl::EnqueueArgs(queue, cl::NDRange(image_size, image_size)),
     d_a, d_c
   );
   queue.finish();
@@ -129,7 +153,7 @@ template <class T>
 void OCLStream<T>::mul()
 {
   (*mul_kernel)(
-    cl::EnqueueArgs(queue, cl::NDRange(array_size)),
+    cl::EnqueueArgs(queue, cl::NDRange(image_size, image_size)),
     d_b, d_c
   );
   queue.finish();
@@ -139,7 +163,7 @@ template <class T>
 void OCLStream<T>::add()
 {
   (*add_kernel)(
-    cl::EnqueueArgs(queue, cl::NDRange(array_size)),
+    cl::EnqueueArgs(queue, cl::NDRange(image_size, image_size)),
     d_a, d_b, d_c
   );
   queue.finish();
@@ -149,7 +173,7 @@ template <class T>
 void OCLStream<T>::triad()
 {
   (*triad_kernel)(
-    cl::EnqueueArgs(queue, cl::NDRange(array_size)),
+    cl::EnqueueArgs(queue, cl::NDRange(image_size, image_size)),
     d_a, d_b, d_c
   );
   queue.finish();
@@ -158,17 +182,27 @@ void OCLStream<T>::triad()
 template <class T>
 void OCLStream<T>::write_arrays(const std::vector<T>& a, const std::vector<T>& b, const std::vector<T>& c)
 {
-  cl::copy(queue, a.begin(), a.end(), d_a);
-  cl::copy(queue, b.begin(), b.end(), d_b);
-  cl::copy(queue, c.begin(), c.end(), d_c);
+  cl::array<cl::size_type, 3> origin;
+  origin[0] = origin[1] = origin[2] = 0;
+  cl::array<cl::size_type, 3> region;
+  region[0] = region[1] = image_size;
+  region[2] = 1;
+  queue.enqueueWriteImage(d_a, CL_TRUE, origin, region, 0, 0, a.data());
+  queue.enqueueWriteImage(d_b, CL_TRUE, origin, region, 0, 0, b.data());
+  queue.enqueueWriteImage(d_c, CL_TRUE, origin, region, 0, 0, c.data());
 }
 
 template <class T>
 void OCLStream<T>::read_arrays(std::vector<T>& a, std::vector<T>& b, std::vector<T>& c)
 {
-  cl::copy(queue, d_a, a.begin(), a.end());
-  cl::copy(queue, d_b, b.begin(), b.end());
-  cl::copy(queue, d_c, c.begin(), c.end());
+  cl::array<cl::size_type, 3> origin;
+  origin[0] = origin[1] = origin[2] = 0;
+  cl::array<cl::size_type, 3> region;
+  region[0] = region[1] = image_size;
+  region[2] = 1;
+  queue.enqueueReadImage(d_a, CL_TRUE, origin, region, 0, 0, a.data());
+  queue.enqueueReadImage(d_b, CL_TRUE, origin, region, 0, 0, b.data());
+  queue.enqueueReadImage(d_c, CL_TRUE, origin, region, 0, 0, c.data());
 }
 
 void getDeviceList(void)

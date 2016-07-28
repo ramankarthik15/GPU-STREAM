@@ -26,21 +26,22 @@ class OCLStream : public Stream<T>
   protected:
     // Size of arrays
     unsigned int array_size;
+    unsigned int image_size;
 
     // Device side pointers to arrays
-    cl::Buffer d_a;
-    cl::Buffer d_b;
-    cl::Buffer d_c;
+    cl::Image2D d_a;
+    cl::Image2D d_b;
+    cl::Image2D d_c;
 
     // OpenCL objects
     cl::Device device;
     cl::Context context;
     cl::CommandQueue queue;
 
-    cl::KernelFunctor<cl::Buffer, cl::Buffer> *copy_kernel;
-    cl::KernelFunctor<cl::Buffer, cl::Buffer> * mul_kernel;
-    cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer> *add_kernel;
-    cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer> *triad_kernel;
+    cl::KernelFunctor<cl::Image2D, cl::Image2D> *copy_kernel;
+    cl::KernelFunctor<cl::Image2D, cl::Image2D> * mul_kernel;
+    cl::KernelFunctor<cl::Image2D, cl::Image2D, cl::Image2D> *add_kernel;
+    cl::KernelFunctor<cl::Image2D, cl::Image2D, cl::Image2D> *triad_kernel;
 
   public:
 
