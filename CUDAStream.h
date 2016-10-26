@@ -16,7 +16,8 @@
 #define IMPLEMENTATION_STRING "CUDA"
 
 #define TBSIZE 1024
-#define DOT_NUM_BLOCKS 256
+#define DOT_TBSIZE 4
+#define DOT_NUM_BLOCKS 24
 
 template <class T>
 class CUDAStream : public Stream<T>
@@ -40,13 +41,13 @@ class CUDAStream : public Stream<T>
     CUDAStream(const unsigned int, const int);
     ~CUDAStream();
 
-    virtual void copy() override;
-    virtual void add() override;
-    virtual void mul() override;
-    virtual void triad() override;
-    virtual T dot() override;
+    virtual void copy();
+    virtual void add();
+    virtual void mul();
+    virtual void triad();
+    virtual T dot();
 
-    virtual void write_arrays(const std::vector<T>& a, const std::vector<T>& b, const std::vector<T>& c) override;
-    virtual void read_arrays(std::vector<T>& a, std::vector<T>& b, std::vector<T>& c) override;
+    virtual void write_arrays(const std::vector<T>& a, const std::vector<T>& b, const std::vector<T>& c);
+    virtual void read_arrays(std::vector<T>& a, std::vector<T>& b, std::vector<T>& c);
 
 };
