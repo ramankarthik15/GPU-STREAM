@@ -18,9 +18,14 @@ RAJAStream<T>::RAJAStream(const unsigned int ARRAY_SIZE, const int device_index)
   index_set.push_back(seg);
 
 #ifdef RAJA_TARGET_CPU
+  d_a = (T*)aligned_alloc(2097152,sizeof(T)*array_size);
+  d_b = (T*)aligned_alloc(2097152,sizeof(T)*array_size);
+  d_c = (T*)aligned_alloc(2097152,sizeof(T)*array_size);
+/*
   d_a = new T[ARRAY_SIZE];
   d_b = new T[ARRAY_SIZE];
   d_c = new T[ARRAY_SIZE];
+*/
 #else
   cudaMallocManaged((void**)&d_a, sizeof(T)*ARRAY_SIZE, cudaMemAttachGlobal);
   cudaMallocManaged((void**)&d_b, sizeof(T)*ARRAY_SIZE, cudaMemAttachGlobal);
@@ -46,10 +51,10 @@ RAJAStream<T>::~RAJAStream()
 template <class T>
 void RAJAStream<T>::init_arrays(T initA, T initB, T initC)
 {
-  T* a = d_a;
-  T* b = d_b;
-  T* c = d_c;
-  forall<policy>(index_set, [=] RAJA_DEVICE (int index)
+  T* RAJA_RESTRICT a = d_a;
+  T* RAJA_RESTRICT b = d_b;
+  T* RAJA_RESTRICT c = d_c;
+  forall<policy>(index_set, [=] RAJA_DEVICE (long index)
   {
     a[index] = initA;
     b[index] = initB;
@@ -69,9 +74,9 @@ void RAJAStream<T>::read_arrays(
 template <class T>
 void RAJAStream<T>::copy()
 {
-  T* a = d_a;
-  T* c = d_c;
-  forall<policy>(index_set, [=] RAJA_DEVICE (int index)
+  T* RAJA_RESTRICT a = d_a;
+  T* RAJA_RESTRICT c = d_c;
+  forall<policy>(index_set, [=] RAJA_DEVICE (long index)
   {
     c[index] = a[index];
   });
@@ -80,10 +85,10 @@ void RAJAStream<T>::copy()
 template <class T>
 void RAJAStream<T>::mul()
 {
-  T* b = d_b;
-  T* c = d_c;
+  T* RAJA_RESTRICT b = d_b;
+  T* RAJA_RESTRICT c = d_c;
   const T scalar = startScalar;
-  forall<policy>(index_set, [=] RAJA_DEVICE (int index)
+  forall<policy>(index_set, [=] RAJA_DEVICE (long index)
   {
     b[index] = scalar*c[index];
   });
@@ -92,10 +97,10 @@ void RAJAStream<T>::mul()
 template <class T>
 void RAJAStream<T>::add()
 {
-  T* a = d_a;
-  T* b = d_b;
-  T* c = d_c;
-  forall<policy>(index_set, [=] RAJA_DEVICE (int index)
+  T* RAJA_RESTRICT a = d_a;
+  T* RAJA_RESTRICT b = d_b;
+  T* RAJA_RESTRICT c = d_c;
+  forall<policy>(index_set, [=] RAJA_DEVICE (long index)
   {
     c[index] = a[index] + b[index];
   });
@@ -104,11 +109,11 @@ void RAJAStream<T>::add()
 template <class T>
 void RAJAStream<T>::triad()
 {
-  T* a = d_a;
-  T* b = d_b;
-  T* c = d_c;
+  T* RAJA_RESTRICT a = d_a;
+  T* RAJA_RESTRICT b = d_b;
+  T* RAJA_RESTRICT c = d_c;
   const T scalar = startScalar;
-  forall<policy>(index_set, [=] RAJA_DEVICE (int index)
+  forall<policy>(index_set, [=] RAJA_DEVICE (long index)
   {
     a[index] = b[index] + scalar*c[index];
   });
@@ -117,12 +122,12 @@ void RAJAStream<T>::triad()
 template <class T>
 T RAJAStream<T>::dot()
 {
-  T* a = d_a;
-  T* b = d_b;
+  T* RAJA_RESTRICT a = d_a;
+  T* RAJA_RESTRICT b = d_b;
 
   RAJA::ReduceSum<reduce_policy, T> sum(0.0);
 
-  forall<policy>(index_set, [=] RAJA_DEVICE (int index)
+  forall<policy>(index_set, [=] RAJA_DEVICE (long index)
   {
     sum += a[index] * b[index];
   });

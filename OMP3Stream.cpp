@@ -11,9 +11,17 @@ template <class T>
 OMP3Stream<T>::OMP3Stream(const unsigned int ARRAY_SIZE, T *a, T *b, T *c)
 {
   array_size = ARRAY_SIZE;
+
+#ifdef ALIGNED_ALLOC
+  this->a = (T*)aligned_alloc(2097152,sizeof(T)*array_size);
+  this->b = (T*)aligned_alloc(2097152,sizeof(T)*array_size);
+  this->c = (T*)aligned_alloc(2097152,sizeof(T)*array_size);
+#else
   this->a = (T*)malloc(sizeof(T)*array_size);
   this->b = (T*)malloc(sizeof(T)*array_size);
   this->c = (T*)malloc(sizeof(T)*array_size);
+#endif
+
 }
 
 template <class T>

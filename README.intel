@@ -1,0 +1,68 @@
+OpenMP:
+-------
+
+	<Build Directions>
+
+
+	Original:    icpc -std=c++11 -O3 -qopenmp -xHOST -DOMP3 main.cpp OMP3Stream.cpp -o gpu-stream-omp
+
+	Optimized:
+
+		BDW: icpc -std=c++11 -O3 -qopenmp -xCORE-AVX2 -qopt-streaming-stores always -DOMP3 -DALIGNED_ALLOC main.cpp OMP3Stream.cpp -o gpu-stream-omp.avx2
+
+		KNL: icpc -std=c++11 -O3 -qopenmp -xMIC-AVX512 -qopt-streaming-stores always -DOMP3 -DALIGNED_ALLOC main.cpp OMP3Stream.cpp -o gpu-stream-omp.avx512
+
+	<Run Directions>
+
+		BDW (E5-2697v4): export OMP_NUM_THREADS=36;export KMP_AFFINITY=proclist=[0-35:1],granularity=thread,explicit,verbose;./gpu-stream-omp.avx2 
+		BDW (E5-2699v4): export OMP_NUM_THREADS=44;export KMP_AFFINITY=proclist=[0-43:1],granularity=thread,explicit,verbose;./gpu-stream-omp.avx2 
+
+		KNL (7250): export OMP_NUM_THREADS=68;export KMP_AFFINITY=scatter,verbose;numactl -m 1 ./gpu-stream-omp.avx512 
+		KNL (7210): export OMP_NUM_THREADS=64;export KMP_AFFINITY=scatter,verbose;numactl -m 1 ./gpu-stream-omp.avx512
+
+ 
+Kokkos:
+-------
+
+	<Build Directions>
+
+	KOKKOS Build (master branch):
+
+	KNL
+	---
+	../generate_makefile.bash --prefix=<path-to>/install-knl --with-openmp --with-pthread --arch=KNL --compiler=icpc --cxxflags=-DKOKKOS_MEMORY_ALIGNMENT=2097152
+	make
+	make install
+
+	BDW
+	---
+	../generate_makefile.bash --prefix=<path-to>/install-bdw --with-openmp --with-pthread --arch=BDW --compiler=icpc --cxxflags=-DKOKKOS_MEMORY_ALIGNMENT=2097152
+	make
+	make install
+
+	KOKKOSStream Build:
+
+	Updated the "index" data type to "long"
+ 
+	BDW : KOKKOS_PATH=<path-to>/install-bdw CXX='icpc -xCORE-AVX2 -qopt-streaming-stores=always' make -f KokkosCPUMakefile
+
+	KNL : KOKKOS_PATH=<path-to>/install-knl CXX='icpc -xMIC-AVX512 -qopt-streaming-stores=always' make -f KokkosCPUMakefile
+
+
+	<Run Directions>
+
+		BDW (E5-2697v4): export OMP_NUM_THREADS=36;export KMP_AFFINITY=proclist=[0-35:1],granularity=thread,explicit,verbose;./gpu-stream-kokkos.avx2 
+		BDW (E5-2699v4): export OMP_NUM_THREADS=44;export KMP_AFFINITY=proclist=[0-43:1],granularity=thread,explicit,verbose;./gpu-stream-kokkos.avx2 
+
+		KNL (7250): export OMP_NUM_THREADS=68;export KMP_AFFINITY=scatter,verbose;numactl -m 1 ./gpu-stream-kokkos.avx512 
+		KNL (7210): export OMP_NUM_THREADS=64;export KMP_AFFINITY=scatter,verbose;numactl -m 1 ./gpu-stream-kokkos.avx512
+
+RAJA:
+-----
+	<Build Directions>
+
+    # assuming RAJA_PATH is set
+    icpc -O3 -std=c++11 -qopenmp -DUSE_RAJA main.cpp RAJAStream.cpp -DRAJA_TARGET_CPU -I$RAJA_PATH/include  -L$RAJA_PATH/lib -lRAJA -o gpu-stream-raja
+    icpc -xMIC-AVX512 -qopt-streaming-stores always -O3 -std=c++11 -qopenmp -DUSE_RAJA main.cpp RAJAStream.cpp -DRAJA_TARGET_CPU -I$RAJA_PATH/include  -L$RAJA_PATH/lib -lRAJA -o gpu-stream-raja.avx512
+    icpc -xCORE-AVX2 -qopt-streaming-stores always -O3 -std=c++11 -qopenmp -DUSE_RAJA main.cpp RAJAStream.cpp -DRAJA_TARGET_CPU -I$RAJA_PATH/include  -L$RAJA_PATH/lib -lRAJA -o gpu-stream-raja.avx2
+
