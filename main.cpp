@@ -39,7 +39,14 @@
 #endif
 
 // Default size of 2^25
+#ifdef MODARRAYSIZE
+#include <omp.h>
+unsigned int ARRAY_SIZE = 1;
+unsigned int SIZE = 1000000;
+#else
 unsigned int ARRAY_SIZE = 33554432;
+#endif
+
 unsigned int num_times = 100;
 unsigned int deviceIndex = 0;
 bool use_float = false;
@@ -54,6 +61,23 @@ void parseArguments(int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
+
+#ifdef MODARRAYSIZE
+//KR ADDED: Define ARRAY SIZE to be multiple of number of threads run
+	int num_threads;
+	#pragma omp parallel
+	{
+	    #pragma omp master
+	    {
+	       num_threads = omp_get_num_threads();
+	       ARRAY_SIZE = SIZE * num_threads;
+
+	    }
+	}
+
+#endif
+
+  printf("array_size = %d\n",ARRAY_SIZE);
   std::cout
     << "GPU-STREAM" << std::endl
     << "Version: " << VERSION_STRING << std::endl
